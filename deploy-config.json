@@ -1,14 +1,14 @@
-{
-    "ApiRepoUrl": "https://github.com/DINSPIRETECHPVTLTD/MCS.git",
-    "ApiBranch": "main",
-    "ApiFtpPath": "/",
-    "UiRepoUrl": "https://github.com/DINSPIRETECHPVTLTD/MCS.WebApi.git",
-    "UiBranch": "main",
-    "UiFtpPath": "/",
-    "ApiFtpServer": "ftp://192.185.11.98/",
+﻿{
+    "UiRepoUrl": "https://github.com/DINSPIRETECHPVTLTD/MCS.git",
     "ApiFtpUser": "mcsapi",
-    "ApiFtpPassword": "0xcN466g_",
     "UiFtpServer": "ftp://192.185.11.98/",
+    "ApiFtpPath": "/",
+    "ApiFtpServer": "ftp://192.185.11.98/",
+    "UiBranch": "main",
+    "ApiBranch": "main",
     "UiFtpUser": "mcs",
-    "UiFtpPassword": "Us599#8mw"
+    "ApiFtpPassword": "0xcN466g_",
+    "ApiRepoUrl": "https://github.com/DINSPIRETECHPVTLTD/MCS.WebApi.git",
+    "UiFtpPassword": "Us599#8mw",
+    "UiFtpPath": "/"
 }

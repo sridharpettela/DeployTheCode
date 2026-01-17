@@ -2,9 +2,7 @@
 # MCS Deployment Script
 # This script builds and deploys both WebAPI and Angular/Ionic projects to FTP
 # Now supports cloning from Git, cleaning up local files, and separate FTP credentials.
-
-Add-Type -AssemblyName System.Windows.Forms
-Add-Type -AssemblyName System.Drawing
+# Headless mode: Configuration is read solely from deploy-config.json.
 
 # Configuration file path
 $configFile = Join-Path $PSScriptRoot "deploy-config.json"
@@ -22,19 +20,6 @@ function Load-Config {
         }
     }
     return $null
-}
-
-# Save configuration
-function Save-Config {
-    param($config)
-    try {
-        $config | ConvertTo-Json -Depth 10 | Set-Content $configFile -Encoding UTF8
-        return $true
-    }
-    catch {
-        Write-Error "Error saving config file: $_"
-        return $false
-    }
 }
 
 # Clone Repository
@@ -60,7 +45,7 @@ function Clone-Repo {
         git clone -b $Branch $RepoUrl $TargetDir
         
         if ($LASTEXITCODE -eq 0 -and (Test-Path $TargetDir)) {
-            Write-Host "✓ Clone successful" -ForegroundColor Green
+            Write-Host "Clone successful" -ForegroundColor Green
             return $true
         }
         else {
@@ -83,7 +68,7 @@ function Remove-Directory {
     if (Test-Path $TargetDir) {
         try {
             Remove-Item -Path $TargetDir -Recurse -Force -ErrorAction Stop
-            Write-Host "✓ Cleaned up: $TargetDir" -ForegroundColor Green
+            Write-Host "Cleaned up: $TargetDir" -ForegroundColor Green
             return $true
         }
         catch {
@@ -92,242 +77,6 @@ function Remove-Directory {
         }
     }
     return $true
-}
-
-# Show settings form
-function Show-SettingsForm {
-    $config = Load-Config
-    
-    $form = New-Object System.Windows.Forms.Form
-    $form.Text = "MCS Deployment Settings"
-    $form.Size = New-Object System.Drawing.Size(700, 750)
-    $form.StartPosition = "CenterScreen"
-    $form.FormBorderStyle = "FixedDialog"
-    $form.MaximizeBox = $false
-    $form.MinimizeBox = $false
-    $form.AutoScroll = $true
-
-    $yPos = 20
-
-    # --- API Section ---
-    $grpApi = New-Object System.Windows.Forms.GroupBox
-    $grpApi.Location = New-Object System.Drawing.Point(10, $yPos)
-    $grpApi.Size = New-Object System.Drawing.Size(660, 240)
-    $grpApi.Text = "WebAPI Configuration"
-    $form.Controls.Add($grpApi)
-
-    # API Repo
-    $lblApiRepo = New-Object System.Windows.Forms.Label
-    $lblApiRepo.Location = New-Object System.Drawing.Point(10, 25)
-    $lblApiRepo.Size = New-Object System.Drawing.Size(100, 20)
-    $lblApiRepo.Text = "Git Repo URL:"
-    $grpApi.Controls.Add($lblApiRepo)
-
-    $txtApiRepo = New-Object System.Windows.Forms.TextBox
-    $txtApiRepo.Location = New-Object System.Drawing.Point(120, 22)
-    $txtApiRepo.Size = New-Object System.Drawing.Size(520, 20)
-    if ($config) { $txtApiRepo.Text = $config.ApiRepoUrl }
-    $grpApi.Controls.Add($txtApiRepo)
-
-    # API Branch
-    $lblApiBranch = New-Object System.Windows.Forms.Label
-    $lblApiBranch.Location = New-Object System.Drawing.Point(10, 55)
-    $lblApiBranch.Size = New-Object System.Drawing.Size(100, 20)
-    $lblApiBranch.Text = "Branch Name:"
-    $grpApi.Controls.Add($lblApiBranch)
-
-    $txtApiBranch = New-Object System.Windows.Forms.TextBox
-    $txtApiBranch.Location = New-Object System.Drawing.Point(120, 52)
-    $txtApiBranch.Size = New-Object System.Drawing.Size(200, 20)
-    $txtApiBranch.Text = if ($config.ApiBranch) { $config.ApiBranch } else { "main" }
-    $grpApi.Controls.Add($txtApiBranch)
-
-    # API FTP Server
-    $lblApiFtpSer = New-Object System.Windows.Forms.Label
-    $lblApiFtpSer.Location = New-Object System.Drawing.Point(10, 85)
-    $lblApiFtpSer.Size = New-Object System.Drawing.Size(100, 20)
-    $lblApiFtpSer.Text = "FTP Server:"
-    $grpApi.Controls.Add($lblApiFtpSer)
-
-    $txtApiFtpSer = New-Object System.Windows.Forms.TextBox
-    $txtApiFtpSer.Location = New-Object System.Drawing.Point(120, 82)
-    $txtApiFtpSer.Size = New-Object System.Drawing.Size(520, 20)
-    if ($config.ApiFtpServer) { $txtApiFtpSer.Text = $config.ApiFtpServer }
-    $grpApi.Controls.Add($txtApiFtpSer)
-
-    # API FTP User
-    $lblApiFtpUse = New-Object System.Windows.Forms.Label
-    $lblApiFtpUse.Location = New-Object System.Drawing.Point(10, 115)
-    $lblApiFtpUse.Size = New-Object System.Drawing.Size(100, 20)
-    $lblApiFtpUse.Text = "FTP User:"
-    $grpApi.Controls.Add($lblApiFtpUse)
-
-    $txtApiFtpUse = New-Object System.Windows.Forms.TextBox
-    $txtApiFtpUse.Location = New-Object System.Drawing.Point(120, 112)
-    $txtApiFtpUse.Size = New-Object System.Drawing.Size(200, 20)
-    if ($config.ApiFtpUser) { $txtApiFtpUse.Text = $config.ApiFtpUser }
-    $grpApi.Controls.Add($txtApiFtpUse)
-
-    # API FTP Pass
-    $lblApiFtpPass = New-Object System.Windows.Forms.Label
-    $lblApiFtpPass.Location = New-Object System.Drawing.Point(330, 115)
-    $lblApiFtpPass.Size = New-Object System.Drawing.Size(80, 20)
-    $lblApiFtpPass.Text = "Password:"
-    $grpApi.Controls.Add($lblApiFtpPass)
-
-    $txtApiFtpPass = New-Object System.Windows.Forms.TextBox
-    $txtApiFtpPass.Location = New-Object System.Drawing.Point(400, 112)
-    $txtApiFtpPass.Size = New-Object System.Drawing.Size(240, 20)
-    $txtApiFtpPass.PasswordChar = '*'
-    if ($config.ApiFtpPassword) { $txtApiFtpPass.Text = $config.ApiFtpPassword }
-    $grpApi.Controls.Add($txtApiFtpPass)
-
-    # API FTP Path
-    $lblApiFtpPath = New-Object System.Windows.Forms.Label
-    $lblApiFtpPath.Location = New-Object System.Drawing.Point(10, 145)
-    $lblApiFtpPath.Size = New-Object System.Drawing.Size(100, 20)
-    $lblApiFtpPath.Text = "FTP Path:"
-    $grpApi.Controls.Add($lblApiFtpPath)
-
-    $txtApiFtpPath = New-Object System.Windows.Forms.TextBox
-    $txtApiFtpPath.Location = New-Object System.Drawing.Point(120, 142)
-    $txtApiFtpPath.Size = New-Object System.Drawing.Size(520, 20)
-    $txtApiFtpPath.PlaceholderText = "(Optional) e.g. /"
-    if ($config) { $txtApiFtpPath.Text = $config.ApiFtpPath }
-    $grpApi.Controls.Add($txtApiFtpPath)
-
-
-    $yPos += 250
-
-    # --- UI Section ---
-    $grpUi = New-Object System.Windows.Forms.GroupBox
-    $grpUi.Location = New-Object System.Drawing.Point(10, $yPos)
-    $grpUi.Size = New-Object System.Drawing.Size(660, 240)
-    $grpUi.Text = "Angular/Ionic Configuration"
-    $form.Controls.Add($grpUi)
-
-    # UI Repo
-    $lblUiRepo = New-Object System.Windows.Forms.Label
-    $lblUiRepo.Location = New-Object System.Drawing.Point(10, 25)
-    $lblUiRepo.Size = New-Object System.Drawing.Size(100, 20)
-    $lblUiRepo.Text = "Git Repo URL:"
-    $grpUi.Controls.Add($lblUiRepo)
-
-    $txtUiRepo = New-Object System.Windows.Forms.TextBox
-    $txtUiRepo.Location = New-Object System.Drawing.Point(120, 22)
-    $txtUiRepo.Size = New-Object System.Drawing.Size(520, 20)
-    if ($config) { $txtUiRepo.Text = $config.UiRepoUrl }
-    $grpUi.Controls.Add($txtUiRepo)
-
-    # UI Branch
-    $lblUiBranch = New-Object System.Windows.Forms.Label
-    $lblUiBranch.Location = New-Object System.Drawing.Point(10, 55)
-    $lblUiBranch.Size = New-Object System.Drawing.Size(100, 20)
-    $lblUiBranch.Text = "Branch Name:"
-    $grpUi.Controls.Add($lblUiBranch)
-
-    $txtUiBranch = New-Object System.Windows.Forms.TextBox
-    $txtUiBranch.Location = New-Object System.Drawing.Point(120, 52)
-    $txtUiBranch.Size = New-Object System.Drawing.Size(200, 20)
-    $txtUiBranch.Text = if ($config.UiBranch) { $config.UiBranch } else { "main" }
-    $grpUi.Controls.Add($txtUiBranch)
-
-    # UI FTP Server
-    $lblUiFtpSer = New-Object System.Windows.Forms.Label
-    $lblUiFtpSer.Location = New-Object System.Drawing.Point(10, 85)
-    $lblUiFtpSer.Size = New-Object System.Drawing.Size(100, 20)
-    $lblUiFtpSer.Text = "FTP Server:"
-    $grpUi.Controls.Add($lblUiFtpSer)
-
-    $txtUiFtpSer = New-Object System.Windows.Forms.TextBox
-    $txtUiFtpSer.Location = New-Object System.Drawing.Point(120, 82)
-    $txtUiFtpSer.Size = New-Object System.Drawing.Size(520, 20)
-    if ($config.UiFtpServer) { $txtUiFtpSer.Text = $config.UiFtpServer }
-    $grpUi.Controls.Add($txtUiFtpSer)
-
-    # UI FTP User
-    $lblUiFtpUse = New-Object System.Windows.Forms.Label
-    $lblUiFtpUse.Location = New-Object System.Drawing.Point(10, 115)
-    $lblUiFtpUse.Size = New-Object System.Drawing.Size(100, 20)
-    $lblUiFtpUse.Text = "FTP User:"
-    $grpUi.Controls.Add($lblUiFtpUse)
-
-    $txtUiFtpUse = New-Object System.Windows.Forms.TextBox
-    $txtUiFtpUse.Location = New-Object System.Drawing.Point(120, 112)
-    $txtUiFtpUse.Size = New-Object System.Drawing.Size(200, 20)
-    if ($config.UiFtpUser) { $txtUiFtpUse.Text = $config.UiFtpUser }
-    $grpUi.Controls.Add($txtUiFtpUse)
-
-    # UI FTP Pass
-    $lblUiFtpPass = New-Object System.Windows.Forms.Label
-    $lblUiFtpPass.Location = New-Object System.Drawing.Point(330, 115)
-    $lblUiFtpPass.Size = New-Object System.Drawing.Size(80, 20)
-    $lblUiFtpPass.Text = "Password:"
-    $grpUi.Controls.Add($lblUiFtpPass)
-
-    $txtUiFtpPass = New-Object System.Windows.Forms.TextBox
-    $txtUiFtpPass.Location = New-Object System.Drawing.Point(400, 112)
-    $txtUiFtpPass.Size = New-Object System.Drawing.Size(240, 20)
-    $txtUiFtpPass.PasswordChar = '*'
-    if ($config.UiFtpPassword) { $txtUiFtpPass.Text = $config.UiFtpPassword }
-    $grpUi.Controls.Add($txtUiFtpPass)
-
-    # UI FTP Path
-    $lblUiFtpPath = New-Object System.Windows.Forms.Label
-    $lblUiFtpPath.Location = New-Object System.Drawing.Point(10, 145)
-    $lblUiFtpPath.Size = New-Object System.Drawing.Size(100, 20)
-    $lblUiFtpPath.Text = "FTP Path:"
-    $grpUi.Controls.Add($lblUiFtpPath)
-
-    $txtUiFtpPath = New-Object System.Windows.Forms.TextBox
-    $txtUiFtpPath.Location = New-Object System.Drawing.Point(120, 142)
-    $txtUiFtpPath.Size = New-Object System.Drawing.Size(520, 20)
-    $txtUiFtpPath.PlaceholderText = "(Optional) e.g. /"
-    if ($config) { $txtUiFtpPath.Text = $config.UiFtpPath }
-    $grpUi.Controls.Add($txtUiFtpPath)
-
-    $yPos += 260
-
-    # Buttons
-    $btnSave = New-Object System.Windows.Forms.Button
-    $btnSave.Location = New-Object System.Drawing.Point(430, $yPos)
-    $btnSave.Size = New-Object System.Drawing.Size(110, 35)
-    $btnSave.Text = "Deploy"
-    $btnSave.DialogResult = [System.Windows.Forms.DialogResult]::OK
-    $form.Controls.Add($btnSave)
-    
-    $btnCancel = New-Object System.Windows.Forms.Button
-    $btnCancel.Location = New-Object System.Drawing.Point(550, $yPos)
-    $btnCancel.Size = New-Object System.Drawing.Size(90, 35)
-    $btnCancel.Text = "Cancel"
-    $btnCancel.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
-    $form.Controls.Add($btnCancel)
-    
-    $form.AcceptButton = $btnSave
-    $form.CancelButton = $btnCancel
-    
-    $result = $form.ShowDialog()
-    
-    if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
-        $config = @{
-            ApiRepoUrl     = $txtApiRepo.Text
-            ApiBranch      = $txtApiBranch.Text
-            ApiFtpPath     = $txtApiFtpPath.Text
-            ApiFtpServer   = $txtApiFtpSer.Text
-            ApiFtpUser     = $txtApiFtpUse.Text
-            ApiFtpPassword = $txtApiFtpPass.Text
-
-            UiRepoUrl      = $txtUiRepo.Text
-            UiBranch       = $txtUiBranch.Text
-            UiFtpPath      = $txtUiFtpPath.Text
-            UiFtpServer    = $txtUiFtpSer.Text
-            UiFtpUser      = $txtUiFtpUse.Text
-            UiFtpPassword  = $txtUiFtpPass.Text
-        }
-        Save-Config $config
-        return $config
-    }
-    return $null
 }
 
 # Build WebAPI project
@@ -350,6 +99,8 @@ function Build-WebAPI {
     
     if (-not $csproj -and -not $sln) {
         Write-Error "No .csproj or .sln file found in $ApiPath"
+        Write-Host "Contents of $ApiPath :" -ForegroundColor Yellow
+        Get-ChildItem -Path $ApiPath | Format-Table Name, Attributes -AutoSize | Out-String | Write-Host
         return $null
     }
     
@@ -372,7 +123,7 @@ function Build-WebAPI {
             & dotnet publish $buildTarget --configuration Release --output $publishDir 2>&1
             
             if ($LASTEXITCODE -eq 0) {
-                Write-Host "✓ WebAPI publish successful" -ForegroundColor Green
+                Write-Host "WebAPI publish successful" -ForegroundColor Green
                 Write-Host "Publish output: $publishDir" -ForegroundColor Green
                 return $publishDir
             }
@@ -434,7 +185,7 @@ function Build-Angular {
         if ($LASTEXITCODE -eq 0) {
             $wwwPath = Join-Path $UiPath "www"
             if (Test-Path $wwwPath) {
-                Write-Host "✓ Angular build successful" -ForegroundColor Green
+                Write-Host "Angular build successful" -ForegroundColor Green
                 Write-Host "Build output: $wwwPath" -ForegroundColor Green
                 return $wwwPath
             }
@@ -567,18 +318,18 @@ function Upload-ToFtp {
                 $response = $ftpRequest.GetResponse()
                 $response.Close()
                 
-                Write-Host "  ✓ Uploaded: $relativePath" -ForegroundColor Green
+                Write-Host "  Uploaded: $relativePath" -ForegroundColor Green
             }
             catch {
                 $uploadErrors++
-                Write-Warning "  ✗ Failed to upload: $relativePath - $_"
+                Write-Warning "  Failed to upload: $relativePath - $_"
             }
         }
         
         Write-Progress -Activity "Uploading to FTP" -Completed
         
         if ($uploadErrors -eq 0) {
-            Write-Host "✓ FTP upload completed successfully ($totalFiles files)" -ForegroundColor Green
+            Write-Host "FTP upload completed successfully ($totalFiles files)" -ForegroundColor Green
             return $true
         }
         else {
@@ -594,10 +345,11 @@ function Upload-ToFtp {
 
 # Main deployment function
 function Start-Deployment {
-    $config = Show-SettingsForm
+    Write-Host "Loading configuration..." -ForegroundColor Gray
+    $config = Load-Config
     
     if (-not $config) {
-        Write-Host "Deployment cancelled by user." -ForegroundColor Yellow
+        Write-Error "Configuration could not be loaded. Please ensure 'deploy-config.json' exists and is valid."
         return
     }
     
@@ -624,6 +376,8 @@ function Start-Deployment {
             if (Clone-Repo -RepoUrl $config.ApiRepoUrl -Branch $config.ApiBranch -TargetDir $apiTempDir) {
                 $releasePath = Build-WebAPI -ApiPath $apiTempDir
                 if ($releasePath) {
+                    Write-Host "Uploading WebAPI to FTP... $releasePath" -ForegroundColor Yellow
+
                     $uploadResult = Upload-ToFtp -LocalPath $releasePath -FtpServer $config.ApiFtpServer -FtpUser $config.ApiFtpUser -FtpPassword $config.ApiFtpPassword -FtpPath $apiFtpPath
                     if (-not $uploadResult) { $errors += "WebAPI deployment failed" }
                 }
