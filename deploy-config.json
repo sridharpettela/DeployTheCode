@@ -1,0 +1,14 @@
+{
+    "ApiRepoUrl": "https://github.com/DINSPIRETECHPVTLTD/MCS.git",
+    "ApiBranch": "main",
+    "ApiFtpPath": "/",
+    "UiRepoUrl": "https://github.com/DINSPIRETECHPVTLTD/MCS.WebApi.git",
+    "UiBranch": "main",
+    "UiFtpPath": "/",
+    "ApiFtpServer": "ftp://192.185.11.98/",
+    "ApiFtpUser": "mcsapi",
+    "ApiFtpPassword": "0xcN466g_",
+    "UiFtpServer": "ftp://192.185.11.98/",
+    "UiFtpUser": "mcs",
+    "UiFtpPassword": "Us599#8mw"
+}
