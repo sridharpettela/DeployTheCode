@@ -42,7 +42,8 @@ function Clone-Repo {
 
     try {
         Write-Host "Git cloning..." -ForegroundColor Yellow
-        git clone -b $Branch $RepoUrl $TargetDir
+        # Use cmd /c to prevent PowerShell from treating git's stderr progress output as a script error
+        & cmd /c "git clone -b $Branch $RepoUrl $TargetDir"
         
         if ($LASTEXITCODE -eq 0 -and (Test-Path $TargetDir)) {
             Write-Host "Clone successful" -ForegroundColor Green
@@ -114,13 +115,13 @@ function Build-WebAPI {
         Push-Location $ApiPath
         try {
             # Restore first
-            dotnet restore $buildTarget
+            dotnet restore $buildTarget 2>&1 | Out-Host
             
             # Publish (better than build for deployment)
             $publishDir = Join-Path $ApiPath "bin\Publish"
             if (Test-Path $publishDir) { Remove-Item $publishDir -Recurse -Force }
             
-            & dotnet publish $buildTarget --configuration Release --output $publishDir 2>&1
+            & dotnet publish $buildTarget --configuration Release --output $publishDir 2>&1 | Out-Host
             
             if ($LASTEXITCODE -eq 0) {
                 Write-Host "WebAPI publish successful" -ForegroundColor Green
@@ -165,7 +166,7 @@ function Build-Angular {
         # Check if node_modules exists
         if (-not (Test-Path "node_modules")) {
             Write-Host "Installing npm dependencies..." -ForegroundColor Yellow
-            & npm install
+            & npm install | Out-Host
             if ($LASTEXITCODE -ne 0) {
                 Write-Error "npm install failed"
                 return $null
@@ -174,18 +175,52 @@ function Build-Angular {
         
         # Build for production
         Write-Host "Building Angular project for production..." -ForegroundColor Yellow
-        & npm run build:prod
+        & npm run build:prod | Out-Host
         if ($LASTEXITCODE -ne 0) {
             # Fallback to standard build if build:prod not found, or error? 
             # Let's try just build
             Write-Warning "'npm run build:prod' failed. Trying 'npm run build'..."
-            & npm run build
+            & npm run build | Out-Host
         }
 
         if ($LASTEXITCODE -eq 0) {
             $wwwPath = Join-Path $UiPath "www"
             if (Test-Path $wwwPath) {
                 Write-Host "Angular build successful" -ForegroundColor Green
+                
+                # Rename index.prod.html to index.html
+                $indexProd = Join-Path $wwwPath "index.prod.html"
+                $index = Join-Path $wwwPath "index.html"
+                if (Test-Path $indexProd) {
+                    if (Test-Path $index) { Remove-Item $index -Force }
+                    Rename-Item -Path $indexProd -NewName "index.html"
+                    Write-Host "Renamed index.prod.html to index.html" -ForegroundColor Gray
+                }
+
+                # Create web.config for IIS Rewrites
+                $webConfigContent = @"
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+  <system.webServer>
+    <rewrite>
+      <rules>
+        <rule name="Angular Routes" stopProcessing="true">
+          <match url=".*" />
+          <conditions logicalGrouping="MatchAll">
+            <add input="{REQUEST_FILENAME}" matchType="IsFile" negate="true" />
+            <add input="{REQUEST_FILENAME}" matchType="IsDirectory" negate="true" />
+          </conditions>
+          <action type="Rewrite" url="/index.html" />
+        </rule>
+      </rules>
+    </rewrite>
+  </system.webServer>
+</configuration>
+"@
+                $webConfigPath = Join-Path $wwwPath "web.config"
+                Set-Content -Path $webConfigPath -Value $webConfigContent -Encoding UTF8
+                Write-Host "Created web.config for IIS" -ForegroundColor Gray
+
                 Write-Host "Build output: $wwwPath" -ForegroundColor Green
                 return $wwwPath
             }
@@ -343,6 +378,96 @@ function Upload-ToFtp {
     }
 }
 
+# Clear FTP Directory
+function Clear-FtpDirectory {
+    param(
+        [string]$FtpUri,
+        [string]$FtpUser,
+        [string]$FtpPassword
+    )
+
+    Write-Host "Clearing FTP directory: $FtpUri" -ForegroundColor Yellow
+
+    try {
+        # Ensure URI ends with /
+        if (-not $FtpUri.EndsWith("/")) { $FtpUri += "/" }
+
+        $ftpRequest = [System.Net.FtpWebRequest]::Create($FtpUri)
+        $ftpRequest.Credentials = New-Object System.Net.NetworkCredential($FtpUser, $FtpPassword)
+        $ftpRequest.Method = [System.Net.WebRequestMethods+Ftp]::ListDirectoryDetails
+        $ftpRequest.UsePassive = $true
+
+        $response = $ftpRequest.GetResponse()
+        $reader = New-Object System.IO.StreamReader($response.GetResponseStream())
+        $content = $reader.ReadToEnd()
+        $reader.Close()
+        $response.Close()
+
+        if ([string]::IsNullOrWhiteSpace($content)) {
+            Write-Host "  Directory is empty." -ForegroundColor Gray
+            return $true
+        }
+
+        # Parse listing (Unix/Windows format varies, simple line parsing usually works for names if careful)
+        # This simple parser assumes standard Unix-style output or Windows style which has details.
+        # A more robust way using ListDirectory (names only) is often safer for deletion loops.
+        
+        $ftpRequestList = [System.Net.FtpWebRequest]::Create($FtpUri)
+        $ftpRequestList.Credentials = New-Object System.Net.NetworkCredential($FtpUser, $FtpPassword)
+        $ftpRequestList.Method = [System.Net.WebRequestMethods+Ftp]::ListDirectory
+        $ftpRequestList.UsePassive = $true
+        
+        $responseList = $ftpRequestList.GetResponse()
+        $readerList = New-Object System.IO.StreamReader($responseList.GetResponseStream())
+        $fileList = $readerList.ReadToEnd() -split "`r`n" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+        $readerList.Close()
+        $responseList.Close()
+
+        foreach ($item in $fileList) {
+            # Trim to handle potential odd whitespace
+            $itemName = $item.Trim()
+            # Skip . and ..
+            if ($itemName -eq "." -or $itemName -eq "..") { continue }
+
+            $itemUri = "$FtpUri$itemName"
+            
+            # Try to delete as file first
+            try {
+                $delRequest = [System.Net.FtpWebRequest]::Create($itemUri)
+                $delRequest.Credentials = New-Object System.Net.NetworkCredential($FtpUser, $FtpPassword)
+                $delRequest.Method = [System.Net.WebRequestMethods+Ftp]::DeleteFile
+                $delRequest.UsePassive = $true
+                $delRequest.GetResponse().Close()
+                Write-Host "  Deleted file: $itemName" -ForegroundColor Gray
+            }
+            catch {
+                # If failed, assume it might be a directory and try recursive delete + remove dir
+                try {
+                    # Recursively clear sub-directory
+                    Clear-FtpDirectory -FtpUri "$itemUri/" -FtpUser $FtpUser -FtpPassword $FtpPassword
+                    
+                    # Remove the now-empty directory
+                    $rmDirRequest = [System.Net.FtpWebRequest]::Create($itemUri)
+                    $rmDirRequest.Credentials = New-Object System.Net.NetworkCredential($FtpUser, $FtpPassword)
+                    $rmDirRequest.Method = [System.Net.WebRequestMethods+Ftp]::RemoveDirectory
+                    $rmDirRequest.UsePassive = $true
+                    $rmDirRequest.GetResponse().Close()
+                    Write-Host "  Removed directory: $itemName" -ForegroundColor Gray
+                }
+                catch {
+                    Write-Warning "  Failed to delete $itemName : $_"
+                }
+            }
+        }
+        return $true
+    }
+    catch {
+        Write-Warning "Error clearing FTP directory $FtpUri : $_"
+        return $false
+    }
+}
+
+
 # Main deployment function
 function Start-Deployment {
     Write-Host "Loading configuration..." -ForegroundColor Gray
@@ -378,6 +503,9 @@ function Start-Deployment {
                 if ($releasePath) {
                     Write-Host "Uploading WebAPI to FTP... $releasePath" -ForegroundColor Yellow
 
+                    # Clear FTP before upload
+                    Clear-FtpDirectory -FtpUri "$($config.ApiFtpServer)$apiFtpPath" -FtpUser $config.ApiFtpUser -FtpPassword $config.ApiFtpPassword
+
                     $uploadResult = Upload-ToFtp -LocalPath $releasePath -FtpServer $config.ApiFtpServer -FtpUser $config.ApiFtpUser -FtpPassword $config.ApiFtpPassword -FtpPath $apiFtpPath
                     if (-not $uploadResult) { $errors += "WebAPI deployment failed" }
                 }
@@ -408,6 +536,9 @@ function Start-Deployment {
             if (Clone-Repo -RepoUrl $config.UiRepoUrl -Branch $config.UiBranch -TargetDir $uiTempDir) {
                 $wwwPath = Build-Angular -UiPath $uiTempDir
                 if ($wwwPath) {
+                    # Clear FTP before upload
+                    Clear-FtpDirectory -FtpUri "$($config.UiFtpServer)$uiFtpPath" -FtpUser $config.UiFtpUser -FtpPassword $config.UiFtpPassword
+
                     $uploadResult = Upload-ToFtp -LocalPath $wwwPath -FtpServer $config.UiFtpServer -FtpUser $config.UiFtpUser -FtpPassword $config.UiFtpPassword -FtpPath $uiFtpPath
                     if (-not $uploadResult) { $errors += "UI deployment failed" }
                 }
