@@ -89,11 +89,13 @@ function Remove-Directory {
 # Build WebAPI project
 function Build-WebAPI {
     param(
-        [string]$ApiPath
+        [string]$ApiPath,
+        [string]$Environment
     )
     
     Write-Host "`n=== Building WebAPI Project ===" -ForegroundColor Cyan
     Write-Host "Project Path: $ApiPath" -ForegroundColor Gray
+    Write-Host "Environment: $Environment" -ForegroundColor Gray
     
     if (-not (Test-Path $ApiPath)) {
         Write-Error "WebAPI project path does not exist: $ApiPath"
@@ -113,7 +115,16 @@ function Build-WebAPI {
     
     $buildTarget = if ($sln) { $sln.FullName } else { $csproj.FullName }
     
+    # Map environment to ASP.NET Core environment name
+    $aspnetEnvironment = switch ($Environment) {
+        "Dev" { "Development" }
+        "Test" { "Test" }
+        "Prod" { "Production" }
+        Default { "Production" }
+    }
+    
     Write-Host "Building: $buildTarget" -ForegroundColor Yellow
+    Write-Host "ASP.NET Core Environment: $aspnetEnvironment" -ForegroundColor Yellow
     
     # Build with dotnet or msbuild
     $dotnetPath = Get-Command dotnet -ErrorAction SilentlyContinue
@@ -127,11 +138,67 @@ function Build-WebAPI {
             $publishDir = Join-Path $ApiPath "bin\Publish"
             if (Test-Path $publishDir) { Remove-Item $publishDir -Recurse -Force }
             
+            # Set ASPNETCORE_ENVIRONMENT variable for the publish process
+            $env:ASPNETCORE_ENVIRONMENT = $aspnetEnvironment
+            
+            Write-Host "Publishing with ASPNETCORE_ENVIRONMENT=$aspnetEnvironment..." -ForegroundColor Yellow
             & dotnet publish $buildTarget --configuration Release --output $publishDir 2>&1 | Out-Host
             
             if ($LASTEXITCODE -eq 0) {
                 Write-Host "WebAPI publish successful" -ForegroundColor Green
                 Write-Host "Publish output: $publishDir" -ForegroundColor Green
+                Write-Host "Environment configuration: $aspnetEnvironment" -ForegroundColor Green
+                
+                # Replace appsettings.json with environment-specific configuration
+                $envAppSettings = Join-Path $publishDir "appsettings.$aspnetEnvironment.json"
+                $defaultAppSettings = Join-Path $publishDir "appsettings.json"
+                
+                if (Test-Path $envAppSettings) {
+                    Write-Host "Replacing appsettings.json with appsettings.$aspnetEnvironment.json..." -ForegroundColor Yellow
+                    if (Test-Path $defaultAppSettings) {
+                        Remove-Item $defaultAppSettings -Force
+                    }
+                    Copy-Item $envAppSettings -Destination $defaultAppSettings -Force
+                    Write-Host "Configuration file replaced successfully" -ForegroundColor Green
+                    
+                    # Remove all environment-specific appsettings files
+                    Write-Host "Removing environment-specific configuration files..." -ForegroundColor Yellow
+                    $envFilesToRemove = @(
+                        "appsettings.Development.json",
+                        "appsettings.Test.json",
+                        "appsettings.Production.json"
+                    )
+                    
+                    foreach ($envFile in $envFilesToRemove) {
+                        $envFilePath = Join-Path $publishDir $envFile
+                        if (Test-Path $envFilePath) {
+                            Remove-Item $envFilePath -Force
+                            Write-Host "  Removed: $envFile" -ForegroundColor Gray
+                        }
+                    }
+                    Write-Host "Only appsettings.json remains in publish output" -ForegroundColor Green
+                }
+                else {
+                    Write-Warning "Environment-specific configuration file not found: appsettings.$aspnetEnvironment.json"
+                    Write-Host "Using default appsettings.json" -ForegroundColor Yellow
+                    
+                    # Still remove environment-specific files even if replacement didn't happen
+                    Write-Host "Removing environment-specific configuration files..." -ForegroundColor Yellow
+                    $envFilesToRemove = @(
+                        "appsettings.Development.json",
+                        "appsettings.Test.json",
+                        "appsettings.Production.json"
+                    )
+                    
+                    foreach ($envFile in $envFilesToRemove) {
+                        $envFilePath = Join-Path $publishDir $envFile
+                        if (Test-Path $envFilePath) {
+                            Remove-Item $envFilePath -Force
+                            Write-Host "  Removed: $envFile" -ForegroundColor Gray
+                        }
+                    }
+                }
+                
                 return $publishDir
             }
             else {
@@ -145,6 +212,8 @@ function Build-WebAPI {
         }
         finally {
             Pop-Location
+            # Clear the environment variable
+            Remove-Item Env:\ASPNETCORE_ENVIRONMENT -ErrorAction SilentlyContinue
         }
     }
     else {
@@ -203,13 +272,59 @@ function Build-Angular {
             if (Test-Path $wwwPath) {
                 Write-Host "Angular build successful" -ForegroundColor Green
                 
-                # Rename index.prod.html to index.html
-                $indexProd = Join-Path $wwwPath "index.prod.html"
+                # Replace index.html with environment-specific index file
+                $indexEnv = switch ($Environment) {
+                    "Dev" { "index.dev.html" }
+                    "Test" { "index.test.html" }
+                    "Prod" { "index.prod.html" }
+                    Default { "index.prod.html" }
+                }
+                
+                $indexEnvPath = Join-Path $wwwPath $indexEnv
                 $index = Join-Path $wwwPath "index.html"
-                if (Test-Path $indexProd) {
+                
+                if (Test-Path $indexEnvPath) {
+                    Write-Host "Replacing index.html with $indexEnv..." -ForegroundColor Yellow
                     if (Test-Path $index) { Remove-Item $index -Force }
-                    Rename-Item -Path $indexProd -NewName "index.html"
-                    Write-Host "Renamed index.prod.html to index.html" -ForegroundColor Gray
+                    Copy-Item $indexEnvPath -Destination $index -Force
+                    Write-Host "Configuration file replaced successfully" -ForegroundColor Green
+                    
+                    # Remove all environment-specific index files
+                    Write-Host "Removing environment-specific index files..." -ForegroundColor Yellow
+                    $envIndexFilesToRemove = @(
+                        "index.dev.html",
+                        "index.test.html",
+                        "index.prod.html"
+                    )
+                    
+                    foreach ($envIndexFile in $envIndexFilesToRemove) {
+                        $envIndexFilePath = Join-Path $wwwPath $envIndexFile
+                        if (Test-Path $envIndexFilePath) {
+                            Remove-Item $envIndexFilePath -Force
+                            Write-Host "  Removed: $envIndexFile" -ForegroundColor Gray
+                        }
+                    }
+                    Write-Host "Only index.html remains in build output" -ForegroundColor Green
+                }
+                else {
+                    Write-Warning "Environment-specific index file not found: $indexEnv"
+                    Write-Host "Using default index.html" -ForegroundColor Yellow
+                    
+                    # Still remove environment-specific files even if replacement didn't happen
+                    Write-Host "Removing environment-specific index files..." -ForegroundColor Yellow
+                    $envIndexFilesToRemove = @(
+                        "index.dev.html",
+                        "index.test.html",
+                        "index.prod.html"
+                    )
+                    
+                    foreach ($envIndexFile in $envIndexFilesToRemove) {
+                        $envIndexFilePath = Join-Path $wwwPath $envIndexFile
+                        if (Test-Path $envIndexFilePath) {
+                            Remove-Item $envIndexFilePath -Force
+                            Write-Host "  Removed: $envIndexFile" -ForegroundColor Gray
+                        }
+                    }
                 }
 
                 # Create web.config for IIS Rewrites
@@ -539,7 +654,7 @@ function Start-Deployment {
             $apiFtpPath = if ([string]::IsNullOrWhiteSpace($config.ApiFtpPath)) { "/" } else { $config.ApiFtpPath }
             
             if (Clone-Repo -RepoUrl $config.ApiRepoUrl -Branch $config.ApiBranch -TargetDir $apiTempDir) {
-                $releasePath = Build-WebAPI -ApiPath $apiTempDir
+                $releasePath = Build-WebAPI -ApiPath $apiTempDir -Environment $Environment
                 if ($releasePath) {
                     Write-Host "Uploading WebAPI to FTP... $releasePath" -ForegroundColor Yellow
 
