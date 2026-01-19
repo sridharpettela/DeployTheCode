@@ -5,7 +5,7 @@
 # Headless mode: Configuration is read solely from deploy-config.json.
 
 param(
-    [Parameter(Mandatory=$true)]
+    [Parameter(Mandatory = $true)]
     [ValidateSet("Dev", "Test", "Prod")]
     [string]$Environment
 )
@@ -156,7 +156,8 @@ function Build-WebAPI {
 # Build Angular/Ionic project
 function Build-Angular {
     param(
-        [string]$UiPath
+        [string]$UiPath,
+        [string]$Environment
     )
     
     Write-Host "`n=== Building Angular/Ionic Project ===" -ForegroundColor Cyan
@@ -179,14 +180,22 @@ function Build-Angular {
             }
         }
         
-        # Build for production
-        Write-Host "Building Angular project for production..." -ForegroundColor Yellow
-        & npm run build:prod | Out-Host
+        # Determine configuration based on Environment
+        $ngConfig = switch ($Environment) {
+            "Dev" { "dev" }
+            "Test" { "test" }
+            "Prod" { "production" }
+            Default { "production" }
+        }
+
+        # Build for specific environment
+        Write-Host "Building Angular project for $Environment (configuration=$ngConfig)..." -ForegroundColor Yellow
+        
+        # Use npx to run local ng CLI ensures version compatibility
+        & npx ng build --configuration=$ngConfig | Out-Host
         if ($LASTEXITCODE -ne 0) {
-            # Fallback to standard build if build:prod not found, or error? 
-            # Let's try just build
-            Write-Warning "'npm run build:prod' failed. Trying 'npm run build'..."
-            & npm run build | Out-Host
+            Write-Error "Angular build failed for configuration '$ngConfig'"
+            return $null
         }
 
         if ($LASTEXITCODE -eq 0) {
@@ -494,19 +503,19 @@ function Start-Deployment {
 
     # Map nested config to flat structure expected by the script
     $config = [PSCustomObject]@{
-        ApiRepoUrl      = $envConfig.Api.RepoUrl
-        ApiBranch       = $envConfig.Api.Branch
-        ApiFtpUser      = $envConfig.Api.FtpUser
-        ApiFtpPassword  = $envConfig.Api.FtpPassword
-        ApiFtpPath      = $envConfig.Api.FtpPath
-        ApiFtpServer    = $envConfig.Api.FtpServer
+        ApiRepoUrl     = $envConfig.Api.RepoUrl
+        ApiBranch      = $envConfig.Api.Branch
+        ApiFtpUser     = $envConfig.Api.FtpUser
+        ApiFtpPassword = $envConfig.Api.FtpPassword
+        ApiFtpPath     = $envConfig.Api.FtpPath
+        ApiFtpServer   = $envConfig.Api.FtpServer
 
-        UiRepoUrl       = $envConfig.Ui.RepoUrl
-        UiBranch        = $envConfig.Ui.Branch
-        UiFtpUser       = $envConfig.Ui.FtpUser
-        UiFtpPassword   = $envConfig.Ui.FtpPassword
-        UiFtpPath       = $envConfig.Ui.FtpPath
-        UiFtpServer     = $envConfig.Ui.FtpServer
+        UiRepoUrl      = $envConfig.Ui.RepoUrl
+        UiBranch       = $envConfig.Ui.Branch
+        UiFtpUser      = $envConfig.Ui.FtpUser
+        UiFtpPassword  = $envConfig.Ui.FtpPassword
+        UiFtpPath      = $envConfig.Ui.FtpPath
+        UiFtpServer    = $envConfig.Ui.FtpServer
     }
     
     Write-Host "`n========================================" -ForegroundColor Cyan
@@ -565,7 +574,7 @@ function Start-Deployment {
             $uiFtpPath = if ([string]::IsNullOrWhiteSpace($config.UiFtpPath)) { "/" } else { $config.UiFtpPath }
             
             if (Clone-Repo -RepoUrl $config.UiRepoUrl -Branch $config.UiBranch -TargetDir $uiTempDir) {
-                $wwwPath = Build-Angular -UiPath $uiTempDir
+                $wwwPath = Build-Angular -UiPath $uiTempDir -Environment $Environment
                 if ($wwwPath) {
                     # Clear FTP before upload
                     Clear-FtpDirectory -FtpUri "$($config.UiFtpServer)$uiFtpPath" -FtpUser $config.UiFtpUser -FtpPassword $config.UiFtpPassword
