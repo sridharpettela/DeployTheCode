@@ -20,7 +20,8 @@ This PowerShell script automates the deployment of both WebAPI and Angular/Ionic
 
 1. **Run the script**:
    ```powershell
-   .\deploy.ps1
+   .\deploy.ps1 -Environment Dev
+   # Or Test, Prod
    ```
 
 2. **Configure settings** in the GUI form:

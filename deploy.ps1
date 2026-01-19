@@ -4,6 +4,12 @@
 # Now supports cloning from Git, cleaning up local files, and separate FTP credentials.
 # Headless mode: Configuration is read solely from deploy-config.json.
 
+param(
+    [Parameter(Mandatory=$true)]
+    [ValidateSet("Dev", "Test", "Prod")]
+    [string]$Environment
+)
+
 # Configuration file path
 $configFile = Join-Path $PSScriptRoot "deploy-config.json"
 
@@ -470,12 +476,37 @@ function Clear-FtpDirectory {
 
 # Main deployment function
 function Start-Deployment {
-    Write-Host "Loading configuration..." -ForegroundColor Gray
-    $config = Load-Config
+    param([string]$Environment)
+
+    Write-Host "Loading configuration for $Environment..." -ForegroundColor Gray
+    $fullConfig = Load-Config
     
-    if (-not $config) {
+    if (-not $fullConfig) {
         Write-Error "Configuration could not be loaded. Please ensure 'deploy-config.json' exists and is valid."
         return
+    }
+
+    $envConfig = $fullConfig.$Environment
+    if (-not $envConfig) {
+        Write-Error "Environment '$Environment' not found in configuration."
+        return
+    }
+
+    # Map nested config to flat structure expected by the script
+    $config = [PSCustomObject]@{
+        ApiRepoUrl      = $envConfig.Api.RepoUrl
+        ApiBranch       = $envConfig.Api.Branch
+        ApiFtpUser      = $envConfig.Api.FtpUser
+        ApiFtpPassword  = $envConfig.Api.FtpPassword
+        ApiFtpPath      = $envConfig.Api.FtpPath
+        ApiFtpServer    = $envConfig.Api.FtpServer
+
+        UiRepoUrl       = $envConfig.Ui.RepoUrl
+        UiBranch        = $envConfig.Ui.Branch
+        UiFtpUser       = $envConfig.Ui.FtpUser
+        UiFtpPassword   = $envConfig.Ui.FtpPassword
+        UiFtpPath       = $envConfig.Ui.FtpPath
+        UiFtpServer     = $envConfig.Ui.FtpServer
     }
     
     Write-Host "`n========================================" -ForegroundColor Cyan
@@ -572,4 +603,4 @@ function Start-Deployment {
 }
 
 # Run deployment
-Start-Deployment
+Start-Deployment -Environment $Environment
