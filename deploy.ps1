@@ -373,6 +373,55 @@ function Build-Angular {
     }
 }
 
+# Run EF Core database migrations using connection string
+function Run-Migrations {
+    param(
+        [string]$ApiPath,
+        [string]$ConnectionString
+    )
+
+    if ([string]::IsNullOrWhiteSpace($ConnectionString)) {
+        Write-Host "No ConnectionString configured; skipping database migration." -ForegroundColor Yellow
+        return $true
+    }
+
+    Write-Host "`n=== Running Database Migrations ===" -ForegroundColor Cyan
+    Write-Host "Project Path: $ApiPath" -ForegroundColor Gray
+
+    if (-not (Test-Path $ApiPath)) {
+        Write-Error "API project path does not exist: $ApiPath"
+        return $false
+    }
+
+    $csproj = Get-ChildItem -Path $ApiPath -Filter "*.csproj" -Recurse | Select-Object -First 1
+    if (-not $csproj) {
+        Write-Error "No .csproj found in $ApiPath; cannot run migrations."
+        return $false
+    }
+
+    $projectDir = $csproj.DirectoryName
+    Push-Location $projectDir
+    try {
+        Write-Host "Running: dotnet ef database update --connection <connection string>" -ForegroundColor Yellow
+        & dotnet ef database update --connection $ConnectionString 2>&1 | Out-Host
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "Database migrations completed successfully." -ForegroundColor Green
+            return $true
+        }
+        else {
+            Write-Error "Database migration failed (exit code: $LASTEXITCODE)."
+            return $false
+        }
+    }
+    catch {
+        Write-Error "Error during migration: $_"
+        return $false
+    }
+    finally {
+        Pop-Location
+    }
+}
+
 # Create FTP directory
 function Create-FtpDirectory {
     param(
@@ -618,19 +667,20 @@ function Start-Deployment {
 
     # Map nested config to flat structure expected by the script
     $config = [PSCustomObject]@{
-        ApiRepoUrl     = $envConfig.Api.RepoUrl
-        ApiBranch      = $envConfig.Api.Branch
-        ApiFtpUser     = $envConfig.Api.FtpUser
-        ApiFtpPassword = $envConfig.Api.FtpPassword
-        ApiFtpPath     = $envConfig.Api.FtpPath
-        ApiFtpServer   = $envConfig.Api.FtpServer
+        ApiRepoUrl         = $envConfig.Api.RepoUrl
+        ApiBranch          = $envConfig.Api.Branch
+        ApiConnectionString = $envConfig.Api.ConnectionString
+        ApiFtpUser         = $envConfig.Api.FtpUser
+        ApiFtpPassword     = $envConfig.Api.FtpPassword
+        ApiFtpPath         = $envConfig.Api.FtpPath
+        ApiFtpServer       = $envConfig.Api.FtpServer
 
-        UiRepoUrl      = $envConfig.Ui.RepoUrl
-        UiBranch       = $envConfig.Ui.Branch
-        UiFtpUser      = $envConfig.Ui.FtpUser
-        UiFtpPassword  = $envConfig.Ui.FtpPassword
-        UiFtpPath      = $envConfig.Ui.FtpPath
-        UiFtpServer    = $envConfig.Ui.FtpServer
+        UiRepoUrl          = $envConfig.Ui.RepoUrl
+        UiBranch           = $envConfig.Ui.Branch
+        UiFtpUser          = $envConfig.Ui.FtpUser
+        UiFtpPassword      = $envConfig.Ui.FtpPassword
+        UiFtpPath          = $envConfig.Ui.FtpPath
+        UiFtpServer        = $envConfig.Ui.FtpServer
     }
     
     Write-Host "`n========================================" -ForegroundColor Cyan
@@ -641,7 +691,7 @@ function Start-Deployment {
     $baseTempDir = Join-Path $PSScriptRoot "_temp_deploy"
     if (-not (Test-Path $baseTempDir)) { New-Item -ItemType Directory -Path $baseTempDir | Out-Null }
 
-    # --- API Deployment ---
+    # --- 1) Run migrations first (if ConnectionString is set), then deploy Web API ---
     if (-not [string]::IsNullOrWhiteSpace($config.ApiRepoUrl)) {
         if ([string]::IsNullOrWhiteSpace($config.ApiFtpServer) -or 
             [string]::IsNullOrWhiteSpace($config.ApiFtpUser) -or 
@@ -654,21 +704,29 @@ function Start-Deployment {
             $apiFtpPath = if ([string]::IsNullOrWhiteSpace($config.ApiFtpPath)) { "/" } else { $config.ApiFtpPath }
             
             if (Clone-Repo -RepoUrl $config.ApiRepoUrl -Branch $config.ApiBranch -TargetDir $apiTempDir) {
-                $releasePath = Build-WebAPI -ApiPath $apiTempDir -Environment $Environment
-                if ($releasePath) {
-                    Write-Host "Uploading WebAPI to FTP... $releasePath" -ForegroundColor Yellow
-
-                    # Clear FTP before upload
-                    Clear-FtpDirectory -FtpUri "$($config.ApiFtpServer)$apiFtpPath" -FtpUser $config.ApiFtpUser -FtpPassword $config.ApiFtpPassword
-
-                    $uploadResult = Upload-ToFtp -LocalPath $releasePath -FtpServer $config.ApiFtpServer -FtpUser $config.ApiFtpUser -FtpPassword $config.ApiFtpPassword -FtpPath $apiFtpPath
-                    if (-not $uploadResult) { $errors += "WebAPI deployment failed" }
+                # Run migrations with connection string first; only then build and deploy
+                $migrationOk = Run-Migrations -ApiPath $apiTempDir -ConnectionString $config.ApiConnectionString
+                if (-not $migrationOk) {
+                    $errors += "Database migration failed"
+                    Remove-Directory -TargetDir $apiTempDir
                 }
                 else {
-                    $errors += "WebAPI build failed"
+                    $releasePath = Build-WebAPI -ApiPath $apiTempDir -Environment $Environment
+                    if ($releasePath) {
+                        Write-Host "Uploading WebAPI to FTP... $releasePath" -ForegroundColor Yellow
+
+                        # Clear FTP before upload
+                        Clear-FtpDirectory -FtpUri "$($config.ApiFtpServer)$apiFtpPath" -FtpUser $config.ApiFtpUser -FtpPassword $config.ApiFtpPassword
+
+                        $uploadResult = Upload-ToFtp -LocalPath $releasePath -FtpServer $config.ApiFtpServer -FtpUser $config.ApiFtpUser -FtpPassword $config.ApiFtpPassword -FtpPath $apiFtpPath
+                        if (-not $uploadResult) { $errors += "WebAPI deployment failed" }
+                    }
+                    else {
+                        $errors += "WebAPI build failed"
+                    }
+                    # Cleanup API
+                    Remove-Directory -TargetDir $apiTempDir
                 }
-                # Cleanup API
-                Remove-Directory -TargetDir $apiTempDir
             }
             else {
                 $errors += "WebAPI Git clone failed"
