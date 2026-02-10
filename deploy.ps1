@@ -713,6 +713,52 @@ function Start-Deployment {
                 else {
                     $releasePath = Build-WebAPI -ApiPath $apiTempDir -Environment $Environment
                     if ($releasePath) {
+                        # Replace web.config for ASP.NET Core / IIS hosting
+                        $apiWebConfigContent = @"
+<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <location path="." inheritInChildApplications="false">
+    <system.webServer>
+
+      <!-- Disable WebDAV (blocks PUT/DELETE) -->
+      <modules>
+        <remove name="WebDAVModule" />
+      </modules>
+      <handlers>
+        <remove name="WebDAV" />
+        <add name="aspNetCore"
+             path="*"
+             verb="*"
+             modules="AspNetCoreModuleV2"
+             resourceType="Unspecified" />
+      </handlers>
+
+      <!-- Allow HTTP verbs -->
+      <security>
+        <requestFiltering>
+          <verbs>
+            <add verb="PUT" allowed="true" />
+            <add verb="DELETE" allowed="true" />
+            <add verb="PATCH" allowed="true" />
+          </verbs>
+        </requestFiltering>
+      </security>
+
+      <!-- ASP.NET Core hosting -->
+      <aspNetCore processPath="dotnet"
+                  arguments=".\MCS.WebApi.dll"
+                  stdoutLogEnabled="false"
+                  stdoutLogFile=".\logs\stdout"
+                  hostingModel="inprocess" />
+
+    </system.webServer>
+  </location>
+</configuration>
+"@
+                        $apiWebConfigPath = Join-Path $releasePath "web.config"
+                        Set-Content -Path $apiWebConfigPath -Value $apiWebConfigContent -Encoding UTF8
+                        Write-Host "Web API web.config written to $apiWebConfigPath" -ForegroundColor Gray
+
                         Write-Host "Uploading WebAPI to FTP... $releasePath" -ForegroundColor Yellow
 
                         # Clear FTP before upload
