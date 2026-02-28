@@ -667,20 +667,21 @@ function Start-Deployment {
 
     # Map nested config to flat structure expected by the script
     $config = [PSCustomObject]@{
-        ApiRepoUrl         = $envConfig.Api.RepoUrl
-        ApiBranch          = $envConfig.Api.Branch
+        ApiRepoUrl          = $envConfig.Api.RepoUrl
+        ApiBranch           = $envConfig.Api.Branch
         ApiConnectionString = $envConfig.Api.ConnectionString
-        ApiFtpUser         = $envConfig.Api.FtpUser
-        ApiFtpPassword     = $envConfig.Api.FtpPassword
-        ApiFtpPath         = $envConfig.Api.FtpPath
-        ApiFtpServer       = $envConfig.Api.FtpServer
+        ApiSkipMigrations   = $envConfig.Api.SkipMigrations
+        ApiFtpUser          = $envConfig.Api.FtpUser
+        ApiFtpPassword      = $envConfig.Api.FtpPassword
+        ApiFtpPath          = $envConfig.Api.FtpPath
+        ApiFtpServer        = $envConfig.Api.FtpServer
 
-        UiRepoUrl          = $envConfig.Ui.RepoUrl
-        UiBranch           = $envConfig.Ui.Branch
-        UiFtpUser          = $envConfig.Ui.FtpUser
-        UiFtpPassword      = $envConfig.Ui.FtpPassword
-        UiFtpPath          = $envConfig.Ui.FtpPath
-        UiFtpServer        = $envConfig.Ui.FtpServer
+        UiRepoUrl           = $envConfig.Ui.RepoUrl
+        UiBranch            = $envConfig.Ui.Branch
+        UiFtpUser           = $envConfig.Ui.FtpUser
+        UiFtpPassword       = $envConfig.Ui.FtpPassword
+        UiFtpPath           = $envConfig.Ui.FtpPath
+        UiFtpServer         = $envConfig.Ui.FtpServer
     }
     
     Write-Host "`n========================================" -ForegroundColor Cyan
@@ -704,8 +705,12 @@ function Start-Deployment {
             $apiFtpPath = if ([string]::IsNullOrWhiteSpace($config.ApiFtpPath)) { "/" } else { $config.ApiFtpPath }
             
             if (Clone-Repo -RepoUrl $config.ApiRepoUrl -Branch $config.ApiBranch -TargetDir $apiTempDir) {
-                # Run migrations with connection string first; only then build and deploy
-                $migrationOk = Run-Migrations -ApiPath $apiTempDir -ConnectionString $config.ApiConnectionString
+                # Run migrations with connection string first (unless SkipMigrations is true); only then build and deploy
+                $runMigrations = -not [string]::IsNullOrWhiteSpace($config.ApiConnectionString) -and -not $config.ApiSkipMigrations
+                if (-not $runMigrations -and $config.ApiSkipMigrations) {
+                    Write-Host "Skipping database migration (Api.SkipMigrations is true)." -ForegroundColor Yellow
+                }
+                $migrationOk = if ($runMigrations) { Run-Migrations -ApiPath $apiTempDir -ConnectionString $config.ApiConnectionString } else { $true }
                 if (-not $migrationOk) {
                     $errors += "Database migration failed"
                     Remove-Directory -TargetDir $apiTempDir

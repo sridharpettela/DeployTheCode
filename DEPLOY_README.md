@@ -70,6 +70,7 @@ Settings are in `deploy-config.json` in the same directory as the script. For ea
 
 - **Api.RepoUrl**, **Api.Branch**: Git repository for the Web API
 - **Api.ConnectionString**: Database connection string used to run EF Core migrations **before** deploying. If set, migrations run first; if empty, migrations are skipped.
+- **Api.SkipMigrations** (optional): Set to `true` to skip running migrations and deploy API/UI only. Use when you have "pending model changes" or run migrations separately.
 - **Api.FtpServer**, **Api.FtpUser**, **Api.FtpPassword**, **Api.FtpPath**: FTP settings for the API
 - **Ui.***: Same structure for the UI repo and FTP
 
@@ -85,7 +86,7 @@ Passwords and connection strings are stored in plain text; protect the file acco
 ## Troubleshooting
 
 - **"dotnet not found"**: Install .NET SDK or use MSBuild from Visual Studio
-- **"Database migration failed"**: Ensure `Api.ConnectionString` in deploy-config.json is correct and the API project has EF Core migrations. Install EF tools: `dotnet tool install --global dotnet-ef`
+- **"Database migration failed"**: (1) **EF tools version**: If you see "tools version '8.0.0' is older than runtime '9.0.13'", run `dotnet tool update --global dotnet-ef`. (2) **Pending model changes**: If the error says "pending changes" / "Add a new migration before updating", add a migration in the API repo (`dotnet ef migrations add <Name>`) and commit, then redeploy. To deploy without running migrations, set `Api.SkipMigrations: true` for that environment in deploy-config.json.
 - **"npm install failed"**: Check Node.js installation and network connectivity
 - **"FTP upload failed"**: Verify FTP credentials and server accessibility
 - **"Release folder not found"**: Check build output location in project settings
