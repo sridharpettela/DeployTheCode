@@ -7,7 +7,11 @@
 param(
     [Parameter(Mandatory = $true)]
     [ValidateSet("Dev", "Test", "Prod")]
-    [string]$Environment
+    [string]$Environment,
+
+    [Parameter(Mandatory = $false)]
+    [ValidateSet("All", "Api", "Ui")]
+    [string]$Scope = "All"
 )
 
 # Configuration file path
@@ -686,6 +690,7 @@ function Start-Deployment {
     
     Write-Host "`n========================================" -ForegroundColor Cyan
     Write-Host "   MCS Deployment Started" -ForegroundColor Cyan
+    Write-Host "   Environment: $Environment | Scope: $Scope" -ForegroundColor Cyan
     Write-Host "========================================`n" -ForegroundColor Cyan
     
     $errors = @()
@@ -693,7 +698,7 @@ function Start-Deployment {
     if (-not (Test-Path $baseTempDir)) { New-Item -ItemType Directory -Path $baseTempDir | Out-Null }
 
     # --- 1) Run migrations first (if ConnectionString is set), then deploy Web API ---
-    if (-not [string]::IsNullOrWhiteSpace($config.ApiRepoUrl)) {
+    if (($Scope -eq "All" -or $Scope -eq "Api") -and -not [string]::IsNullOrWhiteSpace($config.ApiRepoUrl)) {
         if ([string]::IsNullOrWhiteSpace($config.ApiFtpServer) -or 
             [string]::IsNullOrWhiteSpace($config.ApiFtpUser) -or 
             [string]::IsNullOrWhiteSpace($config.ApiFtpPassword)) {
@@ -718,8 +723,10 @@ function Start-Deployment {
                 else {
                     $releasePath = Build-WebAPI -ApiPath $apiTempDir -Environment $Environment
                     if ($releasePath) {
-                        # Replace web.config for ASP.NET Core / IIS hosting
-                        $apiWebConfigContent = @"
+                        # Include web.config only if not already present from publish (use deployment's web.config otherwise)
+                        $apiWebConfigPath = Join-Path $releasePath "web.config"
+                        if (-not (Test-Path $apiWebConfigPath)) {
+                            $apiWebConfigContent = @"
 <?xml version="1.0" encoding="utf-8"?>
 <configuration>
   <location path="." inheritInChildApplications="false">
@@ -760,9 +767,12 @@ function Start-Deployment {
   </location>
 </configuration>
 "@
-                        $apiWebConfigPath = Join-Path $releasePath "web.config"
-                        Set-Content -Path $apiWebConfigPath -Value $apiWebConfigContent -Encoding UTF8
-                        Write-Host "Web API web.config written to $apiWebConfigPath" -ForegroundColor Gray
+                            Set-Content -Path $apiWebConfigPath -Value $apiWebConfigContent -Encoding UTF8
+                            Write-Host "Web API web.config not present; added default web.config to $apiWebConfigPath" -ForegroundColor Gray
+                        }
+                        else {
+                            Write-Host "Using existing web.config from publish output." -ForegroundColor Gray
+                        }
 
                         Write-Host "Uploading WebAPI to FTP... $releasePath" -ForegroundColor Yellow
 
@@ -786,7 +796,7 @@ function Start-Deployment {
     }
     
     # --- UI Deployment ---
-    if (-not [string]::IsNullOrWhiteSpace($config.UiRepoUrl)) {
+    if (($Scope -eq "All" -or $Scope -eq "Ui") -and -not [string]::IsNullOrWhiteSpace($config.UiRepoUrl)) {
         if ([string]::IsNullOrWhiteSpace($config.UiFtpServer) -or 
             [string]::IsNullOrWhiteSpace($config.UiFtpUser) -or 
             [string]::IsNullOrWhiteSpace($config.UiFtpPassword)) {
