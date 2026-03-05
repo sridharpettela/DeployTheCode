@@ -1,6 +1,6 @@
 #Requires -Version 5.1
 # MCS Deployment Script
-# This script builds and deploys both WebAPI and Angular/Ionic projects to FTP
+# This script builds and deploys WebAPI and UI (React, or Angular via Build-Angular) to FTP
 # Now supports cloning from Git, cleaning up local files, and separate FTP credentials.
 # Headless mode: Configuration is read solely from deploy-config.json.
 
@@ -370,6 +370,122 @@ function Build-Angular {
     }
     catch {
         Write-Error "Error during Angular build: $_"
+        return $null
+    }
+    finally {
+        Pop-Location
+    }
+}
+
+# Build React project (Create React App → build/, or Vite → dist/)
+function Build-React {
+    param(
+        [string]$UiPath,
+        [string]$Environment
+    )
+
+    Write-Host "`n=== Building React Project ===" -ForegroundColor Cyan
+    Write-Host "Project Path: $UiPath" -ForegroundColor Gray
+
+    if (-not (Test-Path $UiPath)) {
+        Write-Error "UI project path does not exist: $UiPath"
+        return $null
+    }
+
+    Push-Location $UiPath
+    try {
+        if (-not (Test-Path "node_modules")) {
+            Write-Host "Installing npm dependencies..." -ForegroundColor Yellow
+            & npm install 2>&1 | Out-Host
+            if ($LASTEXITCODE -ne 0) {
+                Write-Error "npm install failed"
+                return $null
+            }
+        }
+
+        # React: npm run build (CRA → build/, Vite → dist/)
+        $envArg = switch ($Environment) {
+            "Dev"   { "development" }
+            "Test"  { "test" }
+            "Prod"  { "production" }
+            Default { "production" }
+        }
+        $env:REACT_APP_ENV = $envArg
+        Write-Host "Building React for $Environment (REACT_APP_ENV=$envArg)..." -ForegroundColor Yellow
+        & npm run build 2>&1 | Out-Host
+        Remove-Item Env:\REACT_APP_ENV -ErrorAction SilentlyContinue
+
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "React build failed"
+            return $null
+        }
+
+        # CRA uses build/, Vite uses dist/
+        $buildPath = $null
+        if (Test-Path (Join-Path $UiPath "build")) {
+            $buildPath = Join-Path $UiPath "build"
+        }
+        elseif (Test-Path (Join-Path $UiPath "dist")) {
+            $buildPath = Join-Path $UiPath "dist"
+        }
+
+        if (-not $buildPath) {
+            Write-Error "React build output not found (expected build/ or dist/)"
+            return $null
+        }
+
+        Write-Host "React build successful: $buildPath" -ForegroundColor Green
+
+        # SPA web.config for IIS (rewrite to index.html, exclude /api)
+        $webConfigContent = @"
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+  <system.webServer>
+
+    <!-- Disable WebDAV (blocks PUT/DELETE) -->
+    <modules>
+      <remove name="WebDAVModule" />
+    </modules>
+    <handlers>
+      <remove name="WebDAV" />
+    </handlers>
+
+    <!-- Allow HTTP verbs -->
+    <security>
+      <requestFiltering>
+        <verbs>
+          <add verb="PUT" allowed="true" />
+          <add verb="DELETE" allowed="true" />
+        </verbs>
+      </requestFiltering>
+    </security>
+
+    <!-- Rewrite only NON-API routes to React SPA -->
+    <rewrite>
+      <rules>
+        <rule name="React SPA" stopProcessing="true">
+          <match url=".*" />
+          <conditions logicalGrouping="MatchAll">
+            <add input="{REQUEST_URI}" pattern="^/api" negate="true" />
+            <add input="{REQUEST_FILENAME}" matchType="IsFile" negate="true" />
+            <add input="{REQUEST_FILENAME}" matchType="IsDirectory" negate="true" />
+          </conditions>
+          <action type="Rewrite" url="/index.html" />
+        </rule>
+      </rules>
+    </rewrite>
+
+  </system.webServer>
+</configuration>
+"@
+        $webConfigPath = Join-Path $buildPath "web.config"
+        Set-Content -Path $webConfigPath -Value $webConfigContent -Encoding UTF8
+        Write-Host "Created web.config for IIS" -ForegroundColor Gray
+
+        return $buildPath
+    }
+    catch {
+        Write-Error "Error during React build: $_"
         return $null
     }
     finally {
@@ -808,7 +924,7 @@ function Start-Deployment {
             $uiFtpPath = if ([string]::IsNullOrWhiteSpace($config.UiFtpPath)) { "/" } else { $config.UiFtpPath }
             
             if (Clone-Repo -RepoUrl $config.UiRepoUrl -Branch $config.UiBranch -TargetDir $uiTempDir) {
-                $wwwPath = Build-Angular -UiPath $uiTempDir -Environment $Environment
+                $wwwPath = Build-React -UiPath $uiTempDir -Environment $Environment
                 if ($wwwPath) {
                     # Clear FTP before upload
                     Clear-FtpDirectory -FtpUri "$($config.UiFtpServer)$uiFtpPath" -FtpUser $config.UiFtpUser -FtpPassword $config.UiFtpPassword
@@ -817,13 +933,13 @@ function Start-Deployment {
                     if (-not $uploadResult) { $errors += "UI deployment failed" }
                 }
                 else {
-                    $errors += "Angular build failed"
+                    $errors += "React build failed"
                 }
                 # Cleanup UI
                 Remove-Directory -TargetDir $uiTempDir
             }
             else {
-                $errors += "Angular Git clone failed"
+                $errors += "UI Git clone failed"
             }
         }
     }

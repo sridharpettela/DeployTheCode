@@ -1,8 +1,8 @@
 {
   "Dev": {
     "Ui": {
-      "RepoUrl": "https://github.com/DINSPIRETECHPVTLTD/MCS.git",
-      "Branch": "main",
+      "RepoUrl": "https://github.com/DINSPIRETECHPVTLTD/MicroCredit.Web.git",
+      "Branch": "master",
       "FtpUser": "mcs",
       "FtpPassword": "Us599#8mw",
       "FtpPath": "/",
