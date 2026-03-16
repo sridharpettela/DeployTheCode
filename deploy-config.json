@@ -21,16 +21,16 @@
   },
   "Test": {
     "Ui": {
-      "RepoUrl": "https://github.com/DINSPIRETECHPVTLTD/MCS.git",
-      "Branch": "main",
+      "RepoUrl": "https://github.com/DINSPIRETECHPVTLTD/MicroCredit.Web.git",
+      "Branch": "master",
       "FtpUser": "mcstest",
       "FtpPassword": "4Kx2wn66!",
       "FtpPath": "/",
       "FtpServer": "ftp://192.185.11.98/"
     },
     "Api": {
-      "RepoUrl": "https://github.com/DINSPIRETECHPVTLTD/MCS.WebApi.git",
-      "Branch": "main",
+      "RepoUrl": "https://github.com/DINSPIRETECHPVTLTD/MicroCredit.Service.git",
+      "Branch": "master",
       "ConnectionString": "Data Source=192.185.11.98;Initial Catalog=dinspire_mcs_test;User ID=dinspire_sa;Password=0rggP!520;Connect Timeout=30;Encrypt=False;Trust Server Certificate=False;Application Intent=ReadWrite;Multi Subnet Failover=False",
       "FtpUser": "mcsapitest",
       "FtpPassword": "1rS#1q0g9",

@@ -1,6 +1,6 @@
 #Requires -Version 5.1
 # MCS Deployment Script
-# This script builds and deploys WebAPI and UI (React, or Angular via Build-Angular) to FTP
+# This script builds and deploys WebAPI and UI (React) to FTP
 # Now supports cloning from Git, cleaning up local files, and separate FTP credentials.
 # Headless mode: Configuration is read solely from deploy-config.json.
 
@@ -226,156 +226,6 @@ function Build-WebAPI {
     }
 }
 
-# Build Angular/Ionic project
-function Build-Angular {
-    param(
-        [string]$UiPath,
-        [string]$Environment
-    )
-    
-    Write-Host "`n=== Building Angular/Ionic Project ===" -ForegroundColor Cyan
-    Write-Host "Project Path: $UiPath" -ForegroundColor Gray
-    
-    if (-not (Test-Path $UiPath)) {
-        Write-Error "UI project path does not exist: $UiPath"
-        return $null
-    }
-    
-    Push-Location $UiPath
-    try {
-        # Check if node_modules exists
-        if (-not (Test-Path "node_modules")) {
-            Write-Host "Installing npm dependencies..." -ForegroundColor Yellow
-            & npm install | Out-Host
-            if ($LASTEXITCODE -ne 0) {
-                Write-Error "npm install failed"
-                return $null
-            }
-        }
-        
-        # Determine configuration based on Environment
-        $ngConfig = switch ($Environment) {
-            "Dev" { "dev" }
-            "Test" { "test" }
-            "Prod" { "production" }
-            Default { "production" }
-        }
-
-        # Build for specific environment
-        Write-Host "Building Angular project for $Environment (configuration=$ngConfig)..." -ForegroundColor Yellow
-        
-        # Use npx to run local ng CLI ensures version compatibility
-        & npx ng build --configuration=$ngConfig | Out-Host
-        if ($LASTEXITCODE -ne 0) {
-            Write-Error "Angular build failed for configuration '$ngConfig'"
-            return $null
-        }
-
-        if ($LASTEXITCODE -eq 0) {
-            $wwwPath = Join-Path $UiPath "www"
-            if (Test-Path $wwwPath) {
-                Write-Host "Angular build successful" -ForegroundColor Green
-                
-                # Replace index.html with environment-specific index file
-                $indexEnv = switch ($Environment) {
-                    "Dev" { "index.dev.html" }
-                    "Test" { "index.test.html" }
-                    "Prod" { "index.prod.html" }
-                    Default { "index.prod.html" }
-                }
-                
-                $indexEnvPath = Join-Path $wwwPath $indexEnv
-                $index = Join-Path $wwwPath "index.html"
-                
-                if (Test-Path $indexEnvPath) {
-                    Write-Host "Replacing index.html with $indexEnv..." -ForegroundColor Yellow
-                    if (Test-Path $index) { Remove-Item $index -Force }
-                    Copy-Item $indexEnvPath -Destination $index -Force
-                    Write-Host "Configuration file replaced successfully" -ForegroundColor Green
-                    
-                    # Remove all environment-specific index files
-                    Write-Host "Removing environment-specific index files..." -ForegroundColor Yellow
-                    $envIndexFilesToRemove = @(
-                        "index.dev.html",
-                        "index.test.html",
-                        "index.prod.html"
-                    )
-                    
-                    foreach ($envIndexFile in $envIndexFilesToRemove) {
-                        $envIndexFilePath = Join-Path $wwwPath $envIndexFile
-                        if (Test-Path $envIndexFilePath) {
-                            Remove-Item $envIndexFilePath -Force
-                            Write-Host "  Removed: $envIndexFile" -ForegroundColor Gray
-                        }
-                    }
-                    Write-Host "Only index.html remains in build output" -ForegroundColor Green
-                }
-                else {
-                    Write-Warning "Environment-specific index file not found: $indexEnv"
-                    Write-Host "Using default index.html" -ForegroundColor Yellow
-                    
-                    # Still remove environment-specific files even if replacement didn't happen
-                    Write-Host "Removing environment-specific index files..." -ForegroundColor Yellow
-                    $envIndexFilesToRemove = @(
-                        "index.dev.html",
-                        "index.test.html",
-                        "index.prod.html"
-                    )
-                    
-                    foreach ($envIndexFile in $envIndexFilesToRemove) {
-                        $envIndexFilePath = Join-Path $wwwPath $envIndexFile
-                        if (Test-Path $envIndexFilePath) {
-                            Remove-Item $envIndexFilePath -Force
-                            Write-Host "  Removed: $envIndexFile" -ForegroundColor Gray
-                        }
-                    }
-                }
-
-                # Create web.config for IIS Rewrites
-                $webConfigContent = @"
-<?xml version="1.0" encoding="UTF-8"?>
-<configuration>
-  <system.webServer>
-    <rewrite>
-      <rules>
-        <rule name="Angular Routes" stopProcessing="true">
-          <match url=".*" />
-          <conditions logicalGrouping="MatchAll">
-            <add input="{REQUEST_FILENAME}" matchType="IsFile" negate="true" />
-            <add input="{REQUEST_FILENAME}" matchType="IsDirectory" negate="true" />
-          </conditions>
-          <action type="Rewrite" url="/index.html" />
-        </rule>
-      </rules>
-    </rewrite>
-  </system.webServer>
-</configuration>
-"@
-                $webConfigPath = Join-Path $wwwPath "web.config"
-                Set-Content -Path $webConfigPath -Value $webConfigContent -Encoding UTF8
-                Write-Host "Created web.config for IIS" -ForegroundColor Gray
-
-                Write-Host "Build output: $wwwPath" -ForegroundColor Green
-                return $wwwPath
-            }
-            else {
-                Write-Error "www folder not found after build"
-                return $null
-            }
-        }
-        else {
-            Write-Error "Angular build failed"
-            return $null
-        }
-    }
-    catch {
-        Write-Error "Error during Angular build: $_"
-        return $null
-    }
-    finally {
-        Pop-Location
-    }
-}
 
 # Build React project (Create React App → build/, or Vite → dist/)
 function Build-React {
@@ -394,6 +244,19 @@ function Build-React {
 
     Push-Location $UiPath
     try {
+        # When running Test environment, prefer .env.test → .env
+        if ($Environment -eq "Test") {
+            $sourceEnvFile = ".env.test"
+            $targetEnvFile = ".env"
+            if (Test-Path $sourceEnvFile) {
+                Write-Host "Using $sourceEnvFile for Test environment (copying to $targetEnvFile)..." -ForegroundColor Yellow
+                Copy-Item $sourceEnvFile $targetEnvFile -Force
+            }
+            else {
+                Write-Warning ".env.test not found in UI project; continuing with existing environment configuration."
+            }
+        }
+
         if (-not (Test-Path "node_modules")) {
             Write-Host "Installing npm dependencies..." -ForegroundColor Yellow
             & npm install 2>&1 | Out-Host
