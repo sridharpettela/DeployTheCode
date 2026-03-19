@@ -52,8 +52,15 @@ function Clone-Repo {
 
     try {
         Write-Host "Git cloning..." -ForegroundColor Yellow
-        # Use cmd /c to prevent PowerShell from treating git's stderr progress output as a script error
-        & cmd /c "git clone -b $Branch $RepoUrl $TargetDir"
+
+        # On Windows, use cmd /c to avoid treating git's stderr progress output as a script error.
+        # On macOS/Linux, call git directly (no cmd.exe available).
+        if ($IsWindows) {
+            & cmd /c "git clone -b $Branch $RepoUrl $TargetDir"
+        }
+        else {
+            & git clone -b $Branch $RepoUrl $TargetDir 2>&1 | Out-Host
+        }
         
         if ($LASTEXITCODE -eq 0 -and (Test-Path $TargetDir)) {
             Write-Host "Clone successful" -ForegroundColor Green

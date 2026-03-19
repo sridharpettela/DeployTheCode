@@ -32,6 +32,7 @@
       "RepoUrl": "https://github.com/DINSPIRETECHPVTLTD/MicroCredit.Service.git",
       "Branch": "master",
       "ConnectionString": "Data Source=192.185.11.98;Initial Catalog=dinspire_mcs_test;User ID=dinspire_sa;Password=0rggP!520;Connect Timeout=30;Encrypt=False;Trust Server Certificate=False;Application Intent=ReadWrite;Multi Subnet Failover=False",
+      "SkipMigrations": true,
       "FtpUser": "mcsapitest",
       "FtpPassword": "1rS#1q0g9",
       "FtpPath": "/",
