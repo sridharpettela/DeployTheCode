@@ -251,16 +251,38 @@ function Build-React {
 
     Push-Location $UiPath
     try {
-        # When running Test environment, prefer .env.test → .env
+        # Copy the exact env file you requested into ".env" (typical for CRA builds).
         if ($Environment -eq "Test") {
             $sourceEnvFile = ".env.test"
             $targetEnvFile = ".env"
             if (Test-Path $sourceEnvFile) {
                 Write-Host "Using $sourceEnvFile for Test environment (copying to $targetEnvFile)..." -ForegroundColor Yellow
                 Copy-Item $sourceEnvFile $targetEnvFile -Force
+
+                # CRA `npm run build` uses NODE_ENV=production and automatically loads .env.production.
+                # To ensure the Test values win, also copy into .env.production.
+                $targetProdEnvFile = ".env.production"
+                Write-Host "Copying $sourceEnvFile to $targetProdEnvFile for CRA production build..." -ForegroundColor Yellow
+                Copy-Item $sourceEnvFile $targetProdEnvFile -Force
             }
             else {
-                Write-Warning ".env.test not found in UI project; continuing with existing environment configuration."
+                Write-Warning "$sourceEnvFile not found in UI project; continuing with existing .env (if present)."
+            }
+        }
+        elseif ($Environment -eq "Dev") {
+            $sourceEnvFile = ".env.development"
+            $targetEnvFile = ".env"
+            if (Test-Path $sourceEnvFile) {
+                Write-Host "Using $sourceEnvFile for Dev environment (copying to $targetEnvFile)..." -ForegroundColor Yellow
+                Copy-Item $sourceEnvFile $targetEnvFile -Force
+
+                # Ensure the requested Dev values are used during `npm run build` (CRA loads .env.production).
+                $targetProdEnvFile = ".env.production"
+                Write-Host "Copying $sourceEnvFile to $targetProdEnvFile for CRA production build..." -ForegroundColor Yellow
+                Copy-Item $sourceEnvFile $targetProdEnvFile -Force
+            }
+            else {
+                Write-Warning "$sourceEnvFile not found in UI project; continuing with existing .env (if present)."
             }
         }
 
