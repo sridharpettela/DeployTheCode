@@ -39,6 +39,26 @@
       "FtpServer": "ftp://192.185.11.98/"
     }
   },
+  "Uat": {
+    "Ui": {
+      "RepoUrl": "https://github.com/DINSPIRETECHPVTLTD/MicroCredit.Web.git",
+      "Branch": "master",
+      "FtpUser": "dinspire_navya_web",
+      "FtpPassword": "!Q00ui0i8",
+      "FtpPath": "/",
+      "FtpServer": "ftp://192.185.11.98/"
+    },
+    "Api": {
+      "RepoUrl": "https://github.com/DINSPIRETECHPVTLTD/MicroCredit.Service.git",
+      "Branch": "master",
+      "ConnectionString": "Data Source=192.185.11.98;Initial Catalog=dinspire_navya;User ID=dinspire_navya;Password=2gJ$&Xm26sfVdvvd;Connect Timeout=30;Encrypt=False;Trust Server Certificate=False;Application Intent=ReadWrite;Multi Subnet Failover=False",
+      "SkipMigrations": true,
+      "FtpUser": "dinspire_navya",
+      "FtpPassword": "?i53v72lB",
+      "FtpPath": "/",
+      "FtpServer": "ftp://192.185.11.98/"
+    }
+  },
   "Prod": {
     "Ui": {
       "RepoUrl": "https://github.com/DINSPIRETECHPVTLTD/MCS.git",

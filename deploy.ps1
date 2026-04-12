@@ -6,7 +6,7 @@
 
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet("Dev", "Test", "Prod")]
+    [ValidateSet("Dev", "Test", "Uat", "Prod")]
     [string]$Environment,
 
     [Parameter(Mandatory = $false)]
@@ -130,6 +130,7 @@ function Build-WebAPI {
     $aspnetEnvironment = switch ($Environment) {
         "Dev" { "Development" }
         "Test" { "Test" }
+        "Uat" { "Uat" }
         "Prod" { "Production" }
         Default { "Production" }
     }
@@ -177,6 +178,7 @@ function Build-WebAPI {
                     $envFilesToRemove = @(
                         "appsettings.Development.json",
                         "appsettings.Test.json",
+                        "appsettings.UAT.json",
                         "appsettings.Production.json"
                     )
                     
@@ -198,6 +200,7 @@ function Build-WebAPI {
                     $envFilesToRemove = @(
                         "appsettings.Development.json",
                         "appsettings.Test.json",
+                        "appsettings.UAT.json",
                         "appsettings.Production.json"
                     )
                     
@@ -269,6 +272,21 @@ function Build-React {
                 Write-Warning "$sourceEnvFile not found in UI project; continuing with existing .env (if present)."
             }
         }
+        elseif ($Environment -eq "Uat") {
+            $sourceEnvFile = ".env.uat"
+            $targetEnvFile = ".env"
+            if (Test-Path $sourceEnvFile) {
+                Write-Host "Using $sourceEnvFile for Uat environment (copying to $targetEnvFile)..." -ForegroundColor Yellow
+                Copy-Item $sourceEnvFile $targetEnvFile -Force
+
+                $targetProdEnvFile = ".env.production"
+                Write-Host "Copying $sourceEnvFile to $targetProdEnvFile for CRA production build..." -ForegroundColor Yellow
+                Copy-Item $sourceEnvFile $targetProdEnvFile -Force
+            }
+            else {
+                Write-Warning "$sourceEnvFile not found in UI project; continuing with existing .env (if present)."
+            }
+        }
         elseif ($Environment -eq "Dev") {
             $sourceEnvFile = ".env.development"
             $targetEnvFile = ".env"
@@ -299,6 +317,7 @@ function Build-React {
         $envArg = switch ($Environment) {
             "Dev"   { "development" }
             "Test"  { "test" }
+            "Uat"   { "uat" }
             "Prod"  { "production" }
             Default { "production" }
         }
