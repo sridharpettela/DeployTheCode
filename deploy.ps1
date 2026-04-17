@@ -244,17 +244,29 @@ function Build-React {
 
     Push-Location $UiPath
     try {
-        # When running Test environment, prefer .env.test → .env
-        if ($Environment -eq "Test") {
-            $sourceEnvFile = ".env.test"
-            $targetEnvFile = ".env"
-            if (Test-Path $sourceEnvFile) {
-                Write-Host "Using $sourceEnvFile for Test environment (copying to $targetEnvFile)..." -ForegroundColor Yellow
+        # Map deployment environment → env file used at build time.
+        # npm run build sets NODE_ENV=production; CRA and Vite load .env.production (and *.local)
+        # with higher precedence than .env, so copying only to .env leaves production URLs in place.
+        $sourceEnvFile = switch ($Environment) {
+            "Dev"   { ".env.development" }
+            "Test"  { ".env.test" }
+            "Prod"  { ".env.production" }
+            Default { ".env.production" }
+        }
+        foreach ($overrideFile in @(".env.production.local", ".env.local")) {
+            if (Test-Path $overrideFile) {
+                Write-Host "Removing $overrideFile so $sourceEnvFile wins for this build..." -ForegroundColor Yellow
+                Remove-Item $overrideFile -Force
+            }
+        }
+        if (Test-Path $sourceEnvFile) {
+            foreach ($targetEnvFile in @(".env", ".env.production")) {
+                Write-Host "Using $sourceEnvFile for $Environment (copying to $targetEnvFile)..." -ForegroundColor Yellow
                 Copy-Item $sourceEnvFile $targetEnvFile -Force
             }
-            else {
-                Write-Warning ".env.test not found in UI project; continuing with existing environment configuration."
-            }
+        }
+        else {
+            Write-Warning "$sourceEnvFile not found in UI project; continuing with existing environment configuration."
         }
 
         if (-not (Test-Path "node_modules")) {
@@ -689,9 +701,12 @@ function Start-Deployment {
             $apiFtpPath = if ([string]::IsNullOrWhiteSpace($config.ApiFtpPath)) { "/" } else { $config.ApiFtpPath }
             
             if (Clone-Repo -RepoUrl $config.ApiRepoUrl -Branch $config.ApiBranch -TargetDir $apiTempDir) {
-                # Run migrations with connection string first (unless SkipMigrations is true); only then build and deploy
-                $runMigrations = -not [string]::IsNullOrWhiteSpace($config.ApiConnectionString) -and -not $config.ApiSkipMigrations
-                if (-not $runMigrations -and $config.ApiSkipMigrations) {
+                # Run migrations with connection string first (unless SkipMigrations is true or Environment is Test); only then build and deploy
+                $runMigrations = -not [string]::IsNullOrWhiteSpace($config.ApiConnectionString) -and -not $config.ApiSkipMigrations -and $Environment -ne "Test"
+                if ($Environment -eq "Test") {
+                    Write-Host "Skipping database migration for Test environment." -ForegroundColor Yellow
+                }
+                elseif (-not $runMigrations -and $config.ApiSkipMigrations) {
                     Write-Host "Skipping database migration (Api.SkipMigrations is true)." -ForegroundColor Yellow
                 }
                 $migrationOk = if ($runMigrations) { Run-Migrations -ApiPath $apiTempDir -ConnectionString $config.ApiConnectionString } else { $true }
