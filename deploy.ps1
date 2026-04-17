@@ -6,7 +6,7 @@
 
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet("Dev", "Test", "Prod")]
+    [ValidateSet("Dev", "Test", "Uat", "Prod")]
     [string]$Environment,
 
     [Parameter(Mandatory = $false)]
@@ -52,8 +52,15 @@ function Clone-Repo {
 
     try {
         Write-Host "Git cloning..." -ForegroundColor Yellow
-        # Use cmd /c to prevent PowerShell from treating git's stderr progress output as a script error
-        & cmd /c "git clone -b $Branch $RepoUrl $TargetDir"
+
+        # On Windows, use cmd /c to avoid treating git's stderr progress output as a script error.
+        # On macOS/Linux, call git directly (no cmd.exe available).
+        if ($IsWindows) {
+            & cmd /c "git clone -b $Branch $RepoUrl $TargetDir"
+        }
+        else {
+            & git clone -b $Branch $RepoUrl $TargetDir 2>&1 | Out-Host
+        }
         
         if ($LASTEXITCODE -eq 0 -and (Test-Path $TargetDir)) {
             Write-Host "Clone successful" -ForegroundColor Green
@@ -123,6 +130,7 @@ function Build-WebAPI {
     $aspnetEnvironment = switch ($Environment) {
         "Dev" { "Development" }
         "Test" { "Test" }
+        "Uat" { "Uat" }
         "Prod" { "Production" }
         Default { "Production" }
     }
@@ -170,6 +178,7 @@ function Build-WebAPI {
                     $envFilesToRemove = @(
                         "appsettings.Development.json",
                         "appsettings.Test.json",
+                        "appsettings.UAT.json",
                         "appsettings.Production.json"
                     )
                     
@@ -191,6 +200,7 @@ function Build-WebAPI {
                     $envFilesToRemove = @(
                         "appsettings.Development.json",
                         "appsettings.Test.json",
+                        "appsettings.UAT.json",
                         "appsettings.Production.json"
                     )
                     
@@ -282,6 +292,7 @@ function Build-React {
         $envArg = switch ($Environment) {
             "Dev"   { "development" }
             "Test"  { "test" }
+            "Uat"   { "uat" }
             "Prod"  { "production" }
             Default { "production" }
         }
