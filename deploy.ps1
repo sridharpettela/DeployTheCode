@@ -271,6 +271,9 @@ function Build-React {
         }
         if (Test-Path $sourceEnvFile) {
             foreach ($targetEnvFile in @(".env", ".env.production")) {
+                if ($sourceEnvFile -eq $targetEnvFile) {
+                    continue
+                }
                 Write-Host "Using $sourceEnvFile for $Environment (copying to $targetEnvFile)..." -ForegroundColor Yellow
                 Copy-Item $sourceEnvFile $targetEnvFile -Force
             }
@@ -405,22 +408,43 @@ function Run-Migrations {
         return $false
     }
 
-    $projectDir = $csproj.DirectoryName
-    Push-Location $projectDir
+    $sln = Get-ChildItem -Path $ApiPath -Filter "*.sln" -Recurse | Select-Object -First 1
+    $restoreTarget = if ($sln) { $sln.FullName } else { $csproj.FullName }
+
+    Push-Location $ApiPath
     try {
-        Write-Host "Running: dotnet ef database update --connection <connection string>" -ForegroundColor Yellow
-        & dotnet ef database update --connection $ConnectionString 2>&1 | Out-Host
-        if ($LASTEXITCODE -eq 0) {
-            Write-Host "Database migrations completed successfully." -ForegroundColor Green
-            return $true
-        }
-        else {
-            Write-Error "Database migration failed (exit code: $LASTEXITCODE)."
+        # Fresh clone has no obj/project.assets.json — dotnet ef needs restore first (same as Build-WebAPI).
+        Write-Host "Restoring NuGet packages before EF migrations..." -ForegroundColor Yellow
+        & dotnet restore $restoreTarget 2>&1 | Out-Host
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "dotnet restore failed before migrations (exit code: $LASTEXITCODE)."
             return $false
+        }
+
+        $projectDir = $csproj.DirectoryName
+        Push-Location $projectDir
+        try {
+            Write-Host "Running: dotnet ef database update --connection <connection string>" -ForegroundColor Yellow
+            & dotnet ef database update --connection $ConnectionString 2>&1 | Out-Host
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "Database migrations completed successfully." -ForegroundColor Green
+                return $true
+            }
+            else {
+                Write-Error "Database migration failed (exit code: $LASTEXITCODE)."
+                return $false
+            }
+        }
+        catch {
+            Write-Error "Error during migration: $_"
+            return $false
+        }
+        finally {
+            Pop-Location
         }
     }
     catch {
-        Write-Error "Error during migration: $_"
+        Write-Error "Error during restore/migration: $_"
         return $false
     }
     finally {
