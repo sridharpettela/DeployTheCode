@@ -260,6 +260,7 @@ function Build-React {
         $sourceEnvFile = switch ($Environment) {
             "Dev"   { ".env.development" }
             "Test"  { ".env.test" }
+            "Uat"  { ".env.uat" }
             "Prod"  { ".env.production" }
             Default { ".env.production" }
         }

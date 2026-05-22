@@ -1,0 +1,22 @@
+{
+  "Dev": {
+    "Ui": {
+      "RepoUrl": "",
+      "Branch": "main",
+      "FtpUser": "",
+      "FtpPassword": "",
+      "FtpPath": "/",
+      "FtpServer": "ftp://192.185.11.98/"
+    }
+  },
+  "Prod": {
+    "Ui": {
+      "RepoUrl": "https://github.com/DINSPIRETECHPVTLTD/Dinspire",
+      "Branch": "main",
+      "FtpUser": "sridharpettela",
+      "FtpPassword": "@AEJo8pwz#r43arc",
+      "FtpPath": "/httpdocs",
+      "FtpServer": "ftp://192.185.11.98/"
+    }
+  }
+}
