@@ -432,6 +432,8 @@ function Run-Migrations {
                 return $true
             }
             else {
+                Write-Host "dotnet ef failed; running dotnet build to show compiler errors..." -ForegroundColor Yellow
+                & dotnet build $csproj.FullName 2>&1 | Out-Host
                 Write-Error "Database migration failed (exit code: $LASTEXITCODE)."
                 return $false
             }
